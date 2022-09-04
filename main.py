@@ -37,16 +37,21 @@ def main(args, ITE=0):
     print(f"GPU Enabled: {torch.cuda.is_available()}")
 
     # Data Loader
-    from archs.mnist import fc1
     transform = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-    traindataset = datasets.MNIST('../data', train=True, download=True, transform=transform)
-    testdataset = datasets.MNIST('../data', train=False, transform=transform)
+    
+    if args.dataset == "mnist":
+        from archs.mnist import fc1
+        traindataset = datasets.MNIST('../data', train=True, download=True, transform=transform)
+        testdataset = datasets.MNIST('../data', train=False, transform=transform)
 
-    train_loader = torch.utils.data.DataLoader(
-        traindataset, batch_size=args.batch_size, shuffle=True, num_workers=0, drop_last=False)
-    test_loader = torch.utils.data.DataLoader(
-        testdataset, batch_size=args.batch_size, shuffle=False, num_workers=0, drop_last=True)
+        train_loader = torch.utils.data.DataLoader(
+            traindataset, batch_size=args.batch_size, shuffle=True, num_workers=0, drop_last=False)
+        test_loader = torch.utils.data.DataLoader(
+            testdataset, batch_size=args.batch_size, shuffle=False, num_workers=0, drop_last=True)
+        
+    else:
+        raise NotImplementedError("Dataset not found !")
 
     # Importing Network Architecture
     global model
@@ -57,8 +62,9 @@ def main(args, ITE=0):
 
     # Copying and Saving Initial State
     initial_state_dict = copy.deepcopy(model.state_dict())
-    utils.checkdir(f"{os.getcwd()}/saves/fc1/mnist/")
-    torch.save(model, f"{os.getcwd()}/saves/fc1/mnist/initial_state_dict_{args.prune_type}.pth.tar")
+    utils.checkdir(f"{os.getcwd()}/saves/fc1/{args.dataset}/")
+    torch.save(
+        model, f"{os.getcwd()}/saves/fc1/{args.dataset}/initial_state_dict_{args.prune_type}.pth.tar")
 
     # Making Initial Mask
     make_mask(model)
@@ -114,9 +120,9 @@ def main(args, ITE=0):
                 # Save Weights
                 if accuracy > best_accuracy:
                     best_accuracy = accuracy
-                    utils.checkdir(f"{os.getcwd()}/saves/fc1/mnist/")
+                    utils.checkdir(f"{os.getcwd()}/saves/fc1/{args.dataset}/")
                     torch.save(
-                        model, f"{os.getcwd()}/saves/fc1/mnist/{_ite}_model_{args.prune_type}.pth.tar")
+                        model, f"{os.getcwd()}/saves/fc1/{args.dataset}/{_ite}_model_{args.prune_type}.pth.tar")
 
             # Training
             loss = train(model, train_loader, optimizer, criterion)
@@ -137,25 +143,25 @@ def main(args, ITE=0):
         plt.plot(np.arange(1, (args.end_iter)+1), 100*(all_loss - np.min(all_loss)) /
                  np.ptp(all_loss).astype(float), c="blue", label="Loss")
         plt.plot(np.arange(1, (args.end_iter)+1), all_accuracy, c="red", label="Accuracy")
-        plt.title(f"Loss Vs Accuracy Vs Iterations (mnist,fc1)")
+        plt.title(f"Loss Vs Accuracy Vs Iterations ({args.dataset},fc1)")
         plt.xlabel("Iterations")
         plt.ylabel("Loss and Accuracy")
         plt.legend()
         plt.grid(color="gray")
-        utils.checkdir(f"{os.getcwd()}/plots/lt/fc1/mnist/")
+        utils.checkdir(f"{os.getcwd()}/plots/lt/fc1/{args.dataset}/")
         plt.savefig(
-            f"{os.getcwd()}/plots/lt/fc1/mnist/{args.prune_type}_LossVsAccuracy_{comp1}.png", dpi=1200)
+            f"{os.getcwd()}/plots/lt/fc1/{args.dataset}/{args.prune_type}_LossVsAccuracy_{comp1}.png", dpi=1200)
         plt.close()
 
         # Dump Plot values
-        utils.checkdir(f"{os.getcwd()}/dumps/lt/fc1/mnist/")
-        all_loss.dump(f"{os.getcwd()}/dumps/lt/fc1/mnist/{args.prune_type}_all_loss_{comp1}.dat")
+        utils.checkdir(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/")
+        all_loss.dump(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/{args.prune_type}_all_loss_{comp1}.dat")
         all_accuracy.dump(
-            f"{os.getcwd()}/dumps/lt/fc1/mnist/{args.prune_type}_all_accuracy_{comp1}.dat")
+            f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/{args.prune_type}_all_accuracy_{comp1}.dat")
 
         # Dumping mask
-        utils.checkdir(f"{os.getcwd()}/dumps/lt/fc1/mnist/")
-        with open(f"{os.getcwd()}/dumps/lt/fc1/mnist/{args.prune_type}_mask_{comp1}.pkl", 'wb') as fp:
+        utils.checkdir(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/")
+        with open(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/{args.prune_type}_mask_{comp1}.pkl", 'wb') as fp:
             pickle.dump(mask, fp)
 
         # Making variables into 0
@@ -164,22 +170,23 @@ def main(args, ITE=0):
         all_accuracy = np.zeros(args.end_iter, float)
 
     # Dumping Values for Plotting
-    utils.checkdir(f"{os.getcwd()}/dumps/lt/fc1/mnist/")
-    comp.dump(f"{os.getcwd()}/dumps/lt/fc1/mnist/{args.prune_type}_compression.dat")
-    bestacc.dump(f"{os.getcwd()}/dumps/lt/fc1/mnist/{args.prune_type}_bestaccuracy.dat")
+    utils.checkdir(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/")
+    comp.dump(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/{args.prune_type}_compression.dat")
+    bestacc.dump(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/{args.prune_type}_bestaccuracy.dat")
 
     # Plotting
     a = np.arange(args.prune_iterations)
     plt.plot(a, bestacc, c="blue", label="Winning tickets")
-    plt.title(f"Test Accuracy vs Unpruned Weights Percentage (mnist,fc1)")
+    plt.title(f"Test Accuracy vs Unpruned Weights Percentage ({args.dataset},fc1)")
     plt.xlabel("Unpruned Weights Percentage")
     plt.ylabel("test accuracy")
     plt.xticks(a, comp, rotation="vertical")
     plt.ylim(0, 100)
     plt.legend()
     plt.grid(color="gray")
-    utils.checkdir(f"{os.getcwd()}/plots/lt/fc1/mnist/")
-    plt.savefig(f"{os.getcwd()}/plots/lt/fc1/mnist/{args.prune_type}_AccuracyVsWeights.png", dpi=1200)
+    utils.checkdir(f"{os.getcwd()}/plots/lt/fc1/{args.dataset}/")
+    plt.savefig(
+        f"{os.getcwd()}/plots/lt/fc1/{args.dataset}/{args.prune_type}_AccuracyVsWeights.png", dpi=1200)
     plt.close()
 
 # Function for Training
@@ -370,6 +377,7 @@ if __name__ == "__main__":
     parser.add_argument("--valid_freq", default=1, type=int)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--prune_type", default="lt", type=str, help="lt | reinit")
+    parser.add_argument("--dataset", default="mnist", type=str, choices=["mnist", "svhn"])
     parser.add_argument("--gpu", default="0", type=str)
     parser.add_argument("--prune_percent", default=10, type=int, help="Pruning percent")
     parser.add_argument("--prune_iterations", default=35, type=int, help="Pruning iterations count")
