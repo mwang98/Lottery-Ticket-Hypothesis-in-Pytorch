@@ -39,19 +39,22 @@ def main(args, ITE=0):
     # Data Loader
     transform = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-    
+
     if args.dataset == "mnist":
         from archs.mnist import fc1
         traindataset = datasets.MNIST('../data', train=True, download=True, transform=transform)
         testdataset = datasets.MNIST('../data', train=False, transform=transform)
-
-        train_loader = torch.utils.data.DataLoader(
-            traindataset, batch_size=args.batch_size, shuffle=True, num_workers=0, drop_last=False)
-        test_loader = torch.utils.data.DataLoader(
-            testdataset, batch_size=args.batch_size, shuffle=False, num_workers=0, drop_last=True)
-        
+    elif args.dataset == "svhn":
+        from archs.svhn import fc1
+        traindataset = datasets.SVHN('../data', split='train', download=True, transform=transform)
+        testdataset = datasets.SVHN('../data', split='test', download=True, transform=transform)
     else:
         raise NotImplementedError("Dataset not found !")
+
+    train_loader = torch.utils.data.DataLoader(
+        traindataset, batch_size=args.batch_size, shuffle=True, num_workers=0, drop_last=False)
+    test_loader = torch.utils.data.DataLoader(
+        testdataset, batch_size=args.batch_size, shuffle=False, num_workers=0, drop_last=True)
 
     # Importing Network Architecture
     global model
@@ -143,7 +146,7 @@ def main(args, ITE=0):
         plt.plot(np.arange(1, (args.end_iter)+1), 100*(all_loss - np.min(all_loss)) /
                  np.ptp(all_loss).astype(float), c="blue", label="Loss")
         plt.plot(np.arange(1, (args.end_iter)+1), all_accuracy, c="red", label="Accuracy")
-        plt.title(f"Loss Vs Accuracy Vs Iterations ({args.dataset},fc1)")
+        plt.title(f"Loss Vs Accuracy Vs Iterations ({args.dataset},fc1) ({comp1}%)")
         plt.xlabel("Iterations")
         plt.ylabel("Loss and Accuracy")
         plt.legend()
@@ -155,7 +158,8 @@ def main(args, ITE=0):
 
         # Dump Plot values
         utils.checkdir(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/")
-        all_loss.dump(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/{args.prune_type}_all_loss_{comp1}.dat")
+        all_loss.dump(
+            f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/{args.prune_type}_all_loss_{comp1}.dat")
         all_accuracy.dump(
             f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/{args.prune_type}_all_accuracy_{comp1}.dat")
 
