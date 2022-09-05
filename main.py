@@ -2,19 +2,15 @@
 import argparse
 import copy
 import os
-import sys
 import numpy as np
 from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import matplotlib.pyplot as plt
 import os
-from tensorboardX import SummaryWriter
-import torchvision.utils as vutils
 import seaborn as sns
 import torch.nn.init as init
 import pickle
@@ -22,18 +18,14 @@ import pickle
 # Custom Libraries
 import utils
 
-# Tensorboard initialization
-writer = SummaryWriter()
-
 # Plotting Style
 sns.set_style('darkgrid')
 
-# Main
+# Main (implemented by author)
 
 
 def main(args, ITE=0):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # device = 'cpu'
     reinit = True if args.prune_type == "reinit" else False
     print(f"GPU Enabled: {torch.cuda.is_available()}")
 
@@ -93,20 +85,20 @@ def main(args, ITE=0):
     all_accuracy = np.zeros(args.end_iter, float)
 
     for _ite in range(args.start_iter, ITERATION):
-        # if not _ite == 0:
-        prune_by_percent(args.prune_percent, resample=resample, reinit=reinit)
-        if reinit:
-            model.apply(weight_init)
-            step = 0
-            for name, param in model.named_parameters():
-                if 'weight' in name:
-                    weight_dev = param.device
-                    param.data = torch.from_numpy(
-                        param.data.cpu().numpy() * mask[step]).to(weight_dev)
-                    step = step + 1
-            step = 0
-        else:
-            original_initialization(mask, initial_state_dict)
+        if not _ite == 0:
+            prune_by_percent(args.prune_percent, resample=resample, reinit=reinit)
+            if reinit:
+                model.apply(weight_init)
+                step = 0
+                for name, param in model.named_parameters():
+                    if 'weight' in name:
+                        weight_dev = param.device
+                        param.data = torch.from_numpy(
+                            param.data.cpu().numpy() * mask[step]).to(weight_dev)
+                        step = step + 1
+                step = 0
+            else:
+                original_initialization(mask, initial_state_dict)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
         print(f"\n--- Pruning Level [{ITE}:{_ite}/{ITERATION}]: ---")
 
@@ -138,7 +130,6 @@ def main(args, ITE=0):
                 pbar.set_description(
                     f'Train Epoch: {iter_}/{args.end_iter} Loss: {loss:.6f} Accuracy: {accuracy:.2f}% Best Accuracy: {best_accuracy:.2f}%')
 
-        writer.add_scalar('Accuracy/test', best_accuracy, comp1)
         bestacc[_ite] = best_accuracy
 
         # Dump Plot values
@@ -178,7 +169,7 @@ def main(args, ITE=0):
         f"{os.getcwd()}/plots/lt/fc1/{args.dataset}/{args.prune_type}_AccuracyVsWeights.png", dpi=1200)
     plt.close()
 
-# Function for Training
+# Function for Training  (implemented by author)
 
 
 def train(model, train_loader, optimizer, criterion):
@@ -222,7 +213,7 @@ def test(model, test_loader, criterion):
         accuracy = 100. * correct / len(test_loader.dataset)
     return accuracy
 
-# My Implementation for pruning
+""" My Implementation for pruning """
 
 
 def prune_by_percent(percent, **kwargs):
@@ -234,9 +225,11 @@ def prune_by_percent(percent, **kwargs):
         # don't prune bias term parameters
         if "weight" in name:
             tensor = param.detach()
-            
-            remained_params = tensor[torch.nonzero(tensor, as_tuple=True)]              # identify living neurons
-            cutoff_value = torch.quantile(torch.abs(remained_params), percent * 0.01)   # compute cutoff value
+
+            # identify living neurons
+            remained_params = tensor[torch.nonzero(tensor, as_tuple=True)]
+            cutoff_value = torch.quantile(torch.abs(remained_params),
+                                          percent * 0.01)   # compute cutoff value
 
             old_mask = torch.Tensor(mask[level]).to(param.device)
             new_mask = torch.where(torch.abs(tensor) >= cutoff_value,                   # update mask
@@ -248,8 +241,9 @@ def prune_by_percent(percent, **kwargs):
 
             level += 1
 
+""""end of my implementation"""
 
-# Function to make an empty mask of the same size as the model
+# Function to make an empty mask of the same size as the model  (implemented by author)
 
 
 def make_mask(model):
@@ -283,7 +277,7 @@ def original_initialization(mask_temp, initial_state_dict):
             param.data = initial_state_dict[name]
     step = 0
 
-# Function for Initialization
+# Function for Initialization  (implemented by author)
 
 
 def weight_init(m):
@@ -354,6 +348,7 @@ def weight_init(m):
                 init.normal_(param.data)
 
 
+#  (implemented by author)
 if __name__ == "__main__":
     # Arguement Parser
     parser = argparse.ArgumentParser()
