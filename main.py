@@ -33,6 +33,7 @@ sns.set_style('darkgrid')
 
 def main(args, ITE=0):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = 'cpu'
     reinit = True if args.prune_type == "reinit" else False
     print(f"GPU Enabled: {torch.cuda.is_available()}")
 
@@ -92,21 +93,21 @@ def main(args, ITE=0):
     all_accuracy = np.zeros(args.end_iter, float)
 
     for _ite in range(args.start_iter, ITERATION):
-        if not _ite == 0:
-            prune_by_percentile(args.prune_percent, resample=resample, reinit=reinit)
-            if reinit:
-                model.apply(weight_init)
-                step = 0
-                for name, param in model.named_parameters():
-                    if 'weight' in name:
-                        weight_dev = param.device
-                        param.data = torch.from_numpy(
-                            param.data.cpu().numpy() * mask[step]).to(weight_dev)
-                        step = step + 1
-                step = 0
-            else:
-                original_initialization(mask, initial_state_dict)
-            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+        # if not _ite == 0:
+        prune_by_percent(args.prune_percent, resample=resample, reinit=reinit)
+        if reinit:
+            model.apply(weight_init)
+            step = 0
+            for name, param in model.named_parameters():
+                if 'weight' in name:
+                    weight_dev = param.device
+                    param.data = torch.from_numpy(
+                        param.data.cpu().numpy() * mask[step]).to(weight_dev)
+                    step = step + 1
+            step = 0
+        else:
+            original_initialization(mask, initial_state_dict)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
         print(f"\n--- Pruning Level [{ITE}:{_ite}/{ITERATION}]: ---")
 
         # Print the table of Nonzeros in each layer
@@ -139,22 +140,6 @@ def main(args, ITE=0):
 
         writer.add_scalar('Accuracy/test', best_accuracy, comp1)
         bestacc[_ite] = best_accuracy
-
-        # Plotting Loss (Training), Accuracy (Testing), Iteration Curve
-        # NOTE Loss is computed for every iteration while Accuracy is computed only for every {args.valid_freq} iterations. Therefore Accuracy saved is constant during the uncomputed iterations.
-        # NOTE Normalized the accuracy to [0,100] for ease of plotting.
-        plt.plot(np.arange(1, (args.end_iter)+1), 100*(all_loss - np.min(all_loss)) /
-                 np.ptp(all_loss).astype(float), c="blue", label="Loss")
-        plt.plot(np.arange(1, (args.end_iter)+1), all_accuracy, c="red", label="Accuracy")
-        plt.title(f"Loss Vs Accuracy Vs Iterations ({args.dataset},fc1) ({comp1}%)")
-        plt.xlabel("Iterations")
-        plt.ylabel("Loss and Accuracy")
-        plt.legend()
-        plt.grid(color="gray")
-        utils.checkdir(f"{os.getcwd()}/plots/lt/fc1/{args.dataset}/")
-        plt.savefig(
-            f"{os.getcwd()}/plots/lt/fc1/{args.dataset}/{args.prune_type}_LossVsAccuracy_{comp1}.png", dpi=1200)
-        plt.close()
 
         # Dump Plot values
         utils.checkdir(f"{os.getcwd()}/dumps/lt/fc1/{args.dataset}/")
@@ -237,33 +222,32 @@ def test(model, test_loader, criterion):
         accuracy = 100. * correct / len(test_loader.dataset)
     return accuracy
 
-# Prune by Percentile module
+# My Implementation for pruning
 
 
-def prune_by_percentile(percent, resample=False, reinit=False, **kwargs):
-    global step
-    global mask
-    global model
+def prune_by_percent(percent, **kwargs):
+    global mask     # mask for pruning
+    global model    # neuron network
 
-    # Calculate percentile value
-    step = 0
+    level = 0
     for name, param in model.named_parameters():
+        # don't prune bias term parameters
+        if "weight" in name:
+            tensor = param.detach()
+            
+            remained_params = tensor[torch.nonzero(tensor, as_tuple=True)]              # identify living neurons
+            cutoff_value = torch.quantile(torch.abs(remained_params), percent * 0.01)   # compute cutoff value
 
-        # We do not prune bias term
-        if 'weight' in name:
-            tensor = param.data.cpu().numpy()
-            alive = tensor[np.nonzero(tensor)]  # flattened array of nonzero values
-            percentile_value = np.percentile(abs(alive), percent)
+            old_mask = torch.Tensor(mask[level]).to(param.device)
+            new_mask = torch.where(torch.abs(tensor) >= cutoff_value,                   # update mask
+                                   old_mask,
+                                   torch.zeros_like(old_mask))
+            mask[level] = new_mask.cpu().numpy()
 
-            # Convert Tensors to numpy and calculate
-            weight_dev = param.device
-            new_mask = np.where(abs(tensor) < percentile_value, 0, mask[step])
+            param.data = param.data * new_mask                                         # prune neurons
 
-            # Apply new weight and mask
-            param.data = torch.from_numpy(tensor * new_mask).to(weight_dev)
-            mask[step] = new_mask
-            step += 1
-    step = 0
+            level += 1
+
 
 # Function to make an empty mask of the same size as the model
 
